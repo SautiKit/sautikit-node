@@ -1,0 +1,25 @@
+// CommonJS build pass. The ESM build (tsconfig.json) emits to dist/; this
+// emits the same sources as CJS into dist/cjs/, which the `require` condition
+// of package.json#exports points at.
+//
+// Two overrides are load-bearing:
+//   - moduleResolution: the base config uses "Bundler", which TypeScript only
+//     permits alongside ESM module targets — CommonJS needs "Node".
+//   - verbatimModuleSyntax: must be off, or tsc refuses to rewrite the
+//     `import`/`export` syntax into CJS ("ESM syntax is not allowed in a
+//     CommonJS module").
+//
+// A generated dist/cjs/package.json ({"type":"commonjs"}) tells Node to treat
+// the .js files in that directory as CJS despite the package-level
+// "type":"module" — see scripts/finalize-cjs.mjs.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "verbatimModuleSyntax": false,
+    "outDir": "dist/cjs"
+  },
+  "include": ["src"],
+  "exclude": ["dist", "**/*.test.ts"]
+}

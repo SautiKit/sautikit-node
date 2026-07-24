@@ -1,0 +1,58 @@
+{
+  "name": "@sautikit/node",
+  "version": "0.2.1",
+  "description": "Sautikit Node.js SDK (preview). SautikitClient transport (calls, WebRTC token minting) + voice-action verb builders.",
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && npm run build:esm && npm run build:cjs",
+    "build:esm": "tsc -p tsconfig.json",
+    "build:cjs": "tsc -p tsconfig.cjs.json && node scripts/finalize-cjs.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sautikit",
+    "voice",
+    "telephony",
+    "sdk",
+    "kenya"
+  ],
+  "license": "MIT",
+  "author": "Helloduty",
+  "homepage": "https://sautikit.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SautiKit/sautikit-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SautiKit/sautikit-node/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  }
+}
