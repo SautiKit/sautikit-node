@@ -11,6 +11,7 @@
 // straight to a JSON responder — Express's res.json() and JSON.stringify() call
 // toJSON() for you, so no explicit .build() is needed.
 import {
+  aiAgent,
   conference,
   dial,
   getDigits,
@@ -20,14 +21,17 @@ import {
   redirect,
   reject,
   say,
+  stream,
   voiceResponse,
 } from "./verbs.js";
 import type {
+  AIAgentParams,
   ConferenceParams,
   DialParams,
   GetDigitsParams,
   NestedAction,
   PlayParams,
+  StreamParams,
   RecordParams,
   RedirectParams,
   RejectParams,
@@ -118,6 +122,23 @@ export class VoiceBuilder {
 
   hangup(): this {
     this.steps.push(hangup());
+    return this;
+  }
+
+  /** Fork call audio to your WebSocket while the call continues. */
+  stream(opts: StreamParams): this {
+    this.steps.push(stream(opts));
+    return this;
+  }
+
+  /**
+   * Hand the answered call to one of your AI agents.
+   *
+   * Terminal: nothing after it runs, because the leg is forked to the agent.
+   * A `.say()` / `.play()` prologue before it is fine and is the usual shape.
+   */
+  aiAgent(agentId: string, opts?: Omit<AIAgentParams, "agentId">): this {
+    this.steps.push(aiAgent(agentId, opts));
     return this;
   }
 

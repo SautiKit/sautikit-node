@@ -1,6 +1,6 @@
 {
   "name": "@sautikit/node",
-  "version": "0.2.1",
+  "version": "0.5.0",
   "description": "Sautikit Node.js SDK (preview). SautikitClient transport (calls, WebRTC token minting) + voice-action verb builders.",
   "type": "module",
   "main": "./dist/cjs/index.js",

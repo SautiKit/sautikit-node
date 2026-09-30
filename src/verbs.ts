@@ -98,29 +98,125 @@ export interface RejectParams {
  * AHEAD OF THE RUNTIME: `<Stream>` ships today as XML only. Native JSON `stream`
  * is on the roadmap and is NOT yet accepted by the runtime schema
  * (internal/voiceflow/schema.go / docs/voice-actions.schema.json), so this shape
- * is not generated from it. This builder emits the JSON the runtime will accept
- * once JSON stream lands; until then, return the XML `<Stream>` form from your
- * webhook. Tracked in docs/sdk/open-questions.md.
+ * is not generated from it.
+ *
+ * As of 2026-08-23 the JSON DSL carries `stream` natively — the runtime parses
+ * it and the published schema documents it — so this builder's output is
+ * accepted directly. The older note here told you to return raw `<Stream>` XML
+ * instead; that is no longer necessary.
  */
 export interface StreamParams {
   /** WebSocket endpoint (wss:// or ws://). Your server must advertise the `audio.drachtio.org` subprotocol. */
   url: string;
-  /** Which leg(s) to fork to the socket. */
-  track: "inbound_track" | "outbound_track" | "both_tracks";
-  /** PCM rate sent and expected back — 8000 (PSTN) or 16000 (AI). Frames are 16-bit little-endian signed PCM. */
-  outputSamplingRate: 8000 | 16000;
+  /** Which leg(s) to fork to the socket. Omit for the platform default. */
+  track?: "inbound_track" | "outbound_track" | "both_tracks";
+  /**
+   * Required whenever <Stream> drives the call: true tells the platform to
+   * answer and hold the call leg for the fork's lifetime (XML wire form
+   * connect="true"). Without it the fork is fire-and-forget on a document that
+   * ends immediately — the call hangs up within about a second.
+   */
+  connect?: boolean;
+  /** PCM rate delivered TO your socket — 8000 (PSTN) or 16000 (AI). Frames are 16-bit little-endian signed PCM. Omit for the platform default. The rate you send audio back at is declared by `bidirectionalSamplingRate`, not this. */
+  outputSamplingRate?: 8000 | 16000;
+  /**
+   * Sample rate in Hz your WebSocket server RETURNS audio at (raw S16LE binary
+   * PCM frames); the platform resamples it to the channel codec. Set it
+   * whenever you play audio back into the call — without it, bidirectional
+   * playback behavior is undefined.
+   */
+  bidirectionalSamplingRate?: number;
   /** Friendly label echoed back in status events. */
   name?: string;
   /** Informational hint about the source sample rate. */
   inputSamplingRate?: number;
-  /** Flat key/value pairs sent as HTTP headers on the WebSocket handshake (e.g. auth tokens, tenant IDs). */
-  headerMetadata?: Record<string, string>;
+  /**
+   * A flat JSON object, SERIALISED AS A STRING — e.g.
+   * `JSON.stringify({ tenant: "acme" })`. Auth tokens, tenant or correlation
+   * IDs. Delivered in the FIRST WebSocket TEXT frame as that frame's `headers`
+   * field — NOT sent as HTTP headers on the WebSocket handshake, despite the
+   * name.
+   *
+   * This was typed `Record<string, string>` until 2026-08-23, which did not
+   * match the wire: the runtime field is a string, so an object here
+   * serialised to `"headerMetadata": {...}` and failed schema validation.
+   */
+  headerMetadata?: string;
   /** Opaque UTF-8 delivered in the first WebSocket text frame after connect. */
   openMetadata?: string;
   /** URL the runtime POSTs stream status events to. */
   statusCallback?: string;
   /** Space-separated event list, e.g. "stream-started stream-stopped stream-error". */
   statusEvents?: string;
+}
+
+/** Ring a destination pool. Mirrors the number-level forward target. */
+export interface AIAgentForward {
+  /** E.164 numbers, `client:<username>` identities, or 4-digit extensions. */
+  destinations: string[];
+  /** Ring destinations one at a time rather than together. */
+  sequential?: boolean;
+  /** Hang up the other legs once one answers. */
+  firstAnswerWins?: boolean;
+  /** Seconds per attempt. Omit for the platform default. */
+  ringTimeout?: number;
+  /** Override the caller ID presented to the destination. */
+  callerId?: string;
+  /** Taken when no destination answers — this is where "ring the team, else take a message" lives. */
+  voicemail?: AIAgentVoicemail;
+}
+
+/** Take a message. Mirrors the number-level voicemail config. */
+export interface AIAgentVoicemail {
+  /** Spoken before the beep. */
+  greetingText?: string;
+  /** A Sautikit-hosted recording played instead of `greetingText`. */
+  greetingPlayUrl?: string;
+  /** TTS voice for `greetingText`. */
+  greetingVoice?: "man" | "woman";
+  /** Cap the recording in seconds. Omit for the platform default. */
+  maxLength?: number;
+  /** Play a tone before recording starts. */
+  beep?: boolean;
+}
+
+/**
+ * Where control goes when the agent hands the caller back.
+ *
+ * EXACTLY ONE target — the union below makes that a type error rather than a
+ * runtime one. Number-level routing resolves a multi-target config by silent
+ * precedence, but a verb naming both `forward` and `voicemail` reads as "ring
+ * the team, else take a message" while actually discarding one, so the runtime
+ * refuses it. For that behaviour, nest it: `forward.voicemail`.
+ */
+export type AIAgentHandover =
+  | { callbackUrl: string; forward?: never; voicemail?: never }
+  | { forward: AIAgentForward; callbackUrl?: never; voicemail?: never }
+  | { voicemail: AIAgentVoicemail; callbackUrl?: never; forward?: never };
+
+/**
+ * Hand the answered leg to a Sautikit AI agent.
+ *
+ * Sautikit-native: the platform expands it server-side into a `stream` fork
+ * within the same response, so there is no XML form. A prologue of say/play
+ * may precede it, and it must be the LAST action — nothing can run once the
+ * leg is forked.
+ */
+export interface AIAgentParams {
+  /** Workspace-scoped agent UUID. There is no name form: agent names are not unique. */
+  agentId: string;
+  /** Pin a published revision. Omit to run the agent's current one. */
+  revision?: number;
+  /** Named values merged into the agent's prompt template at staging time. */
+  variables?: Record<string, string>;
+  /** Where the caller goes when the agent hands back. Omit to fall back to the number's own configuration. */
+  handover?: AIAgentHandover;
+  /** Taken when the agent cannot be reached at all (no published revision, no free seat, staging failure). Defaults to "hangup". */
+  onUnavailable?: "hangup" | "voicemail" | "forward" | "callback";
+  /** Target for `onUnavailable: "voicemail"`. */
+  voicemail?: AIAgentVoicemail;
+  /** Target for `onUnavailable: "forward"`. */
+  forward?: AIAgentForward;
 }
 
 // Single-key action objects (the discriminated union: exactly one verb per item).
@@ -134,6 +230,7 @@ export type RedirectAction = { redirect: RedirectParams };
 export type RejectAction = { reject: RejectParams };
 export type HangupAction = { hangup: Record<string, never> };
 export type StreamAction = { stream: StreamParams };
+export type AIAgentAction = { aiAgent: AIAgentParams };
 
 /** Only Say and Play are legal inside getDigits.nested (ErrGetDigitsNested). */
 export type NestedAction = SayAction | PlayAction;
@@ -148,7 +245,8 @@ export type VoiceAction =
   | RedirectAction
   | RejectAction
   | HangupAction
-  | StreamAction;
+  | StreamAction
+  | AIAgentAction;
 
 export interface VoiceResponse {
   actions: VoiceAction[];
@@ -204,11 +302,25 @@ export function hangup(): HangupAction {
  * Fork live call audio to your WebSocket for real-time voice AI. Bridge the PCM
  * to your own model (Gemini Live, OpenAI, self-hosted) and stream the reply back.
  *
- * Emits JSON ahead of runtime support — see StreamParams. Return the XML
- * `<Stream>` form from your webhook until native JSON stream ships.
+ * Set `connect: true` unless you have a specific reason not to — without it
+ * the fork is fire-and-forget on a document that ends immediately, and the
+ * call drops after about a second.
  */
 export function stream(opts: StreamParams): StreamAction {
   return { stream: opts };
+}
+
+/**
+ * Hand the answered leg to a Sautikit AI agent.
+ *
+ * Must be the last action in the response — see AIAgentParams. `voiceResponse`
+ * enforces that at runtime for JS callers.
+ */
+export function aiAgent(
+  agentId: string,
+  opts: Omit<AIAgentParams, "agentId"> = {},
+): AIAgentAction {
+  return { aiAgent: { agentId, ...opts } };
 }
 
 /**
@@ -222,7 +334,12 @@ export function voiceResponse(actions: VoiceAction[]): VoiceResponse {
       `voiceResponse: ${actions.length} actions exceeds the ${MAX_ACTIONS}-verb limit`,
     );
   }
-  for (const action of actions) {
+  for (const [i, action] of actions.entries()) {
+    if ("aiAgent" in action && i !== actions.length - 1) {
+      throw new TypeError(
+        "aiAgent must be the last action — nothing can run once the leg is forked",
+      );
+    }
     if ("getDigits" in action) {
       for (const n of action.getDigits.nested ?? []) {
         if (!("say" in n) && !("play" in n)) {

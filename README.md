@@ -301,6 +301,49 @@ Sautikit runtime, so the SDK does not emit it. Migrating from Twilio/TwiML or
 Africa's Talking? Your existing voice XML keeps working as-is; reach for this SDK
 when you want typed, validated JSON.
 
+## Supervise live calls
+
+Put one supervisor on a call in progress — listen silently, whisper to the
+agent, or barge in so both sides hear the supervisor — and switch modes
+without redialling anyone:
+
+```ts
+import { SautikitClient } from "@sautikit/node";
+
+const sautikit = new SautikitClient({ apiKey: process.env.SAUTIKIT_API_KEY! });
+
+// callId is the call's UUID or its HD_… session id.
+const sup = await sautikit.calls.supervise(callId, {
+  mode: "listen",
+  supervisor: { type: "client", identity: "mary" },
+  announce: "agent", // "none" | "agent" | "both" — who hears the join/mode tone
+  label: "Mary Wanjiku", // shown in webhooks and the agent's banner, ≤64 chars
+});
+
+await sautikit.calls.setSupervisionMode(callId, "whisper"); // agent hears her, caller doesn't
+await sautikit.calls.setSupervisionMode(callId, "barge"); // now everyone hears her
+
+await sautikit.calls.stopSupervision(callId); // idempotent
+
+const current = await sautikit.calls.getSupervision(callId); // the live supervision, or null
+```
+
+Notes:
+
+- One supervisor per call — starting a second is a 409
+  `calls.supervision_in_progress`.
+- A supervisor can be a browser tab (`type: "client"`), a SIP device
+  (`type: "sip"`), or a phone number (`type: "phone", number: "+2547…"`).
+- `notifyAgent: false` on `supervise()` suppresses the agent-side notice
+  while still starting the leg.
+- The supervisor leg is billed from answer to leave: KES 0.50/min for a
+  `client` or `sip` supervisor, your normal outbound rate for a `phone` one.
+- Your API key needs the `calls.supervise` scope (`calls.read` covers
+  `getSupervision()`); cookie-authenticated console sessions are unaffected.
+- Pairs with `@sautikit/webrtc`'s `client.supervise()` for a browser-side
+  supervisor — see that package's README. Full guide:
+  https://sautikit.com/developers/guides/call-supervision.
+
 ## Exports
 
 | Export | What it is |

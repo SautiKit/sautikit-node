@@ -7,6 +7,7 @@ import {
   reject,
   hangup,
   stream,
+  aiAgent,
   voiceResponse,
   MAX_ACTIONS,
 } from "./verbs.js";
@@ -128,5 +129,55 @@ describe("dial destination XOR (number | numbers | sip)", () => {
     // @ts-expect-error — ErrDialNumberNumbers: set either number or numbers, not both.
     const bad = { number: "+254700000001", numbers: ["+254700000002"] };
     expect(() => dial(bad)).not.toThrow(); // type-level guard only; runtime passes through
+  });
+});
+
+describe("aiAgent", () => {
+  it("emits the aiAgent key the runtime unmarshals", () => {
+    expect(aiAgent("3f1b8c22-6a4e-4f1a-9c77-5b2e0d9a4411")).toEqual({
+      aiAgent: { agentId: "3f1b8c22-6a4e-4f1a-9c77-5b2e0d9a4411" },
+    });
+  });
+
+  it("carries a forward handover with nested voicemail", () => {
+    expect(
+      aiAgent("ag-1", {
+        handover: {
+          forward: {
+            destinations: ["+254712345678"],
+            voicemail: { greetingText: "Leave a message." },
+          },
+        },
+      }),
+    ).toEqual({
+      aiAgent: {
+        agentId: "ag-1",
+        handover: {
+          forward: {
+            destinations: ["+254712345678"],
+            voicemail: { greetingText: "Leave a message." },
+          },
+        },
+      },
+    });
+  });
+
+  it("is accepted as the last action", () => {
+    expect(() => voiceResponse([say("One moment."), aiAgent("ag-1")])).not.toThrow();
+  });
+
+  // Mirrors ErrNativeVerbNotTerminal: nothing can run once the leg is forked,
+  // so a trailing action is a mistake worth catching at authoring time rather
+  // than silently discarding on a live call.
+  it("throws when an action follows it", () => {
+    expect(() => voiceResponse([aiAgent("ag-1"), hangup()])).toThrow(
+      /aiAgent must be the last action/,
+    );
+  });
+
+  it("rejects a handover naming two targets at the type level", () => {
+    // @ts-expect-error — ErrAIAgentHandoverXOR: exactly one target.
+    const bad = { handover: { forward: { destinations: ["+1"] }, voicemail: {} } };
+    expect(bad).toBeTruthy();
   });
 });

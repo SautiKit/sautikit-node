@@ -8,7 +8,90 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/);
 this package is pre-1.0, so any release may change the public API — pin your
 version.
 
-## 0.2.1 — unreleased (in repo)
+## 0.5.0 — 2026-09-30
+
+### Added
+
+- **Call supervision.** Put one supervisor on a live call and switch between
+  listen, whisper and barge without anyone redialling:
+
+  ```ts
+  const sup = await sautikit.calls.supervise(callId, {
+    mode: "listen",
+    supervisor: { type: "client", identity: "mary" },
+    announce: "agent",
+    label: "Mary Wanjiku",
+  });
+  await sautikit.calls.setSupervisionMode(callId, "whisper");
+  await sautikit.calls.stopSupervision(callId);
+  const current = await sautikit.calls.getSupervision(callId); // null when none
+  ```
+
+  `callId` is the call UUID or its `HD_…` session id. One supervisor per
+  call — a second gets a 409 `calls.supervision_in_progress`. Supervisors can
+  be a browser (`client`), a SIP device (`sip`) or a phone number (`phone`).
+  `label` (≤64 characters) is the supervisor's name in events and the agent's
+  notice; `notifyAgent: false` suppresses that notice. The supervisor leg is
+  billed from answer to leave: KES 0.50/min from a browser or SIP device, the
+  outbound rate for a phone. Your API key needs the new `calls.supervise`
+  scope. Progress arrives as `call.supervision.*` webhooks.
+
+## 0.4.1 — 2026-08-18
+
+### Changed
+
+- **`clientRequestId` max length raised from 128 to 5000 characters.**
+  Documentation only — no runtime behaviour in this package changed.
+
+  Note the platform omits a label from the `?clientRequestId=` query
+  parameter on your voice callback once its percent-encoded form exceeds 2048
+  bytes, because a request line that long is answered 414 by common webserver
+  defaults. The forwarded body carries the full label whatever its size. Keep
+  a label under ~2000 characters to have it on both surfaces.
+
+## 0.4.0 — 2026-08-18
+
+### Added
+
+- **`clientRequestId` on `calls.create()`.** Your own correlation handle for a
+  call — an order id, a ticket number, your own uuid — handed straight back so
+  an asynchronous callback can be tied to whatever the call was placed FOR,
+  without keeping a map of Sautikit's identifiers.
+
+  It comes back on `client_request_id` in the create response, on your voice
+  callback URL as `?clientRequestId=…`, and as a `clientRequestId` field in the
+  forwarded PBX body on voice callbacks and `call.*` webhook deliveries.
+
+  It is not `idempotencyKey`: it takes no part in deduplication, need not be
+  unique, and changes nothing about how the call is placed. Reusing one label
+  across a whole campaign is fine. Max 5000 characters.
+
+## 0.3.0
+
+### Added
+
+- **`callerId` on `calls.create()`.** The number shown to the called party,
+  when it should differ from `from`.
+
+  `from` has been doing two jobs: choosing which of your numbers the call
+  leaves on, and being what the callee sees. Those are separable — you may
+  route through one number for carrier reasons and want your main line
+  displayed, and an internal call should present the caller's extension rather
+  than a DID several devices share.
+
+  ```ts
+  await sautikit.calls.create({
+    from: "+254709120800",      // the number the call leaves on
+    callerId: "+254709120888",  // what the callee sees
+    to: "+254711111111",
+  });
+  ```
+
+  Omitted, the callee sees `from` — today's behaviour, unchanged. The number
+  must be one your workspace owns; the platform refuses one it does not, so a
+  call cannot present an identity you cannot prove.
+
+## 0.2.1 — 2026-07-19
 
 ### Fixed
 
